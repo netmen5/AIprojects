@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tabliczka Dzielenia</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f4f4f9; }
+        #game-container { text-align: center; background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 450px; max-width: 90%; }
+        .question { font-size: 2.5em; margin-bottom: 30px; font-weight: bold; color: #333; }
+        .options { display: flex; justify-content: space-between; margin-bottom: 25px; gap: 10px; }
+        .option-btn { flex: 1; font-size: 1.8em; padding: 15px 0; border: 2px solid transparent; border-radius: 8px; background-color: #007bff; color: white; cursor: pointer; transition: all 0.2s; box-sizing: border-box; }
+        .option-btn:hover:not(:disabled) { background-color: #0056b3; transform: scale(1.05); }
+        .correct { background-color: #28a745 !important; border-color: #1e7e34 !important; transform: scale(1.1); box-shadow: 0 0 10px rgba(40,167,69,0.5); z-index: 10; }
+        .incorrect { background-color: #dc3545 !important; border-color: #bd2130 !important; text-decoration: line-through; color: #ffcccc; }
+        .dimmed { opacity: 0.3; pointer-events: none; filter: grayscale(100%); }
+        #feedback { font-size: 1.2em; margin-bottom: 20px; min-height: 2em; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+        #next-btn { font-size: 1.2em; padding: 12px 25px; border: none; border-radius: 5px; background-color: #ffc107; color: #333; font-weight: bold; cursor: pointer; display: none; margin: 0 auto; transition: background 0.2s; }
+        #next-btn:hover { background-color: #e0a800; }
+        #score-board { position: fixed; bottom: 20px; right: 20px; background: #fff; padding: 10px 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); font-size: 1.2em; border-left: 5px solid #333; }
+        .score-correct { color: #28a745; font-weight: bold; }
+        .score-incorrect { color: #dc3545; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="question" id="question">? : ? =</div>
+    <div class="options" id="options">
+        <button class="option-btn" id="btn0" onclick="checkAnswer(0)"></button>
+        <button class="option-btn" id="btn1" onclick="checkAnswer(1)"></button>
+        <button class="option-btn" id="btn2" onclick="checkAnswer(2)"></button>
+    </div>
+    <div id="feedback"></div>
+    <button id="next-btn" onclick="generateQuestion()">Następne pytanie</button>
+</div>
+
+<div id="score-board">
+    Poprawne: <span id="score-c" class="score-correct">0</span> | Błędne: <span id="score-i" class="score-incorrect">0</span>
+</div>
+
+<script>
+    let scoreCorrect = parseInt(sessionStorage.getItem('scoreCorrectDiv')) || 0;
+    let scoreIncorrect = parseInt(sessionStorage.getItem('scoreIncorrectDiv')) || 0;
+    let currentCorrectAnswer = 0;
+    let currentCorrectIndex = 0;
+    let answered = false;
+
+    let audioCtx;
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    function playSuccessSound() {
+        if (!audioCtx) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
+        const now = audioCtx.currentTime;
+        const frequencies = [523.25, 659.25, 783.99, 1046.50];
+        
+        frequencies.forEach((freq, index) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + (index * 0.1));
+            
+            gain.gain.setValueAtTime(0, now + (index * 0.1));
+            gain.gain.linearRampToValueAtTime(0.3, now + (index * 0.1) + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + (index * 0.1) + 0.3);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start(now + (index * 0.1));
+            osc.stop(now + (index * 0.1) + 0.3);
+        });
+    }
+
+    function updateScoreBoard() {
+        document.getElementById('score-c').innerText = scoreCorrect;
+        document.getElementById('score-i').innerText = scoreIncorrect;
+    }
+
+    function getWrongAnswer(correct) {
+        let wrong;
+        do {
+            wrong = correct + (Math.floor(Math.random() * 7) - 3);
+        } while (wrong === correct || wrong <= 0 || wrong > 20);
+        return wrong;
+    }
+
+    function generateQuestion() {
+        answered = false;
+        document.getElementById('feedback').innerText = '';
+        document.getElementById('next-btn').style.display = 'none';
+        
+        // Dzielnik (a) od 2 do 9, wynik (b) od 2 do 9. 
+        // Zapobiega to przypadkom typu 100:2 = 50 i gwarantuje odwrotność tabliczki mnożenia.
+        const a = Math.floor(Math.random() * 8) + 2; 
+        const b = Math.floor(Math.random() * 8) + 2; 
+        const c = a * b; // Dzielna
+        
+        currentCorrectAnswer = b;
+        
+        document.getElementById('question').innerText = `${c} : ${a} =`;
+
+        let answers = [currentCorrectAnswer];
+        
+        while(answers.length < 3) {
+            let wrong = getWrongAnswer(currentCorrectAnswer);
+            if (!answers.includes(wrong)) {
+                answers.push(wrong);
+            }
+        }
+
+        answers.sort(() => Math.random() - 0.5);
+        currentCorrectIndex = answers.indexOf(currentCorrectAnswer);
+
+        for (let i = 0; i < 3; i++) {
+            const btn = document.getElementById('btn' + i);
+            btn.innerText = answers[i];
+            btn.className = 'option-btn';
+            btn.disabled = false;
+        }
+        
+        updateScoreBoard();
+    }
+
+    function checkAnswer(index) {
+        initAudio();
+        
+        if (answered) return;
+        answered = true;
+
+        const buttons = [document.getElementById('btn0'), document.getElementById('btn1'), document.getElementById('btn2')];
+        const feedback = document.getElementById('feedback');
+        const nextBtn = document.getElementById('next-btn');
+
+        if (index === currentCorrectIndex) {
+            scoreCorrect++;
+            sessionStorage.setItem('scoreCorrectDiv', scoreCorrect);
+            playSuccessSound();
+            
+            buttons[index].classList.add('correct');
+            feedback.innerText = 'Znakomicie!';
+            feedback.style.color = '#28a745';
+            
+            buttons.forEach((btn, i) => {
+                if (i !== index) btn.classList.add('dimmed');
+            });
+        } else {
+            scoreIncorrect++;
+            sessionStorage.setItem('scoreIncorrectDiv', scoreIncorrect);
+            
+            buttons[index].classList.add('incorrect');
+            buttons[currentCorrectIndex].classList.add('correct');
+            
+            feedback.innerText = 'Nic się nie stało, następnym razem będziesz już wiedzieć.';
+            feedback.style.color = '#dc3545';
+            
+            buttons.forEach((btn, i) => {
+                if (i !== index && i !== currentCorrectIndex) btn.classList.add('dimmed');
+            });
+        }
+
+        buttons.forEach(btn => btn.disabled = true);
+        updateScoreBoard();
+        nextBtn.style.display = 'block';
+    }
+
+    updateScoreBoard();
+    generateQuestion();
+</script>
+</body>
+</html>
